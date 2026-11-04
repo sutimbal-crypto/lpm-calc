@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>LPM 마스터 - 유량계 0.01m³ 현장 계산기</title>
+    <meta name="description" content="배관/유량계 0.01m³ 측정 시간(정수 초)으로 분당 유량(LPM)을 즉시 계산하고 정유량밸브 규격 판정 및 동호수별 기록을 제공하는 현장 필수 앱">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="manifest" href="manifest.json">
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Toss Payments SDK -->
+    <script src="https://js.tosspayments.com/v1/payment"></script>
+    <!-- Google AdSense (노출형 CPM 실시간 광고) -->
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2679965815856201" crossorigin="anonymous"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800;900&display=swap');
+        body { font-family: 'Pretendard', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .touch-action-manipulation { touch-action: manipulation; }
+        @keyframes popIn {
+            0% { transform: scale(0.9); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-pop-in {
+            animation: popIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between selection:bg-cyan-500 selection:text-white pb-20">
+
+    <!-- Top App Bar -->
+    <header class="bg-slate-800/95 backdrop-blur border-b border-slate-700/80 sticky top-0 z-30 px-4 py-2.5 flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+            <span class="text-2xl">💧</span>
+            <div>
+                <h1 class="font-extrabold text-base tracking-tight text-white flex items-center gap-1.5">
+                    LPM 마스터 
+                    <span id="app-badge-mode" class="bg-amber-500/20 text-amber-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-amber-500/30">무료 버전 (광고형)</span>
+                </h1>
+                <p class="text-[10px] text-slate-400">유량계 0.01m³ (10L) 기준</p>
+            </div>
+        </div>
+        
+        <!-- Coffee Support & Toggle -->
+        <div class="flex items-center gap-2">
+            <button onclick="openPaymentModal()" id="btn-pro-buy" class="px-2.5 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs rounded-lg transition shadow flex items-center gap-1 active:scale-95">
+                <i class="fa-solid fa-mug-hot text-[11px]"></i> <span id="pro-btn-text">☕ 커피 한 잔 후원 (광고제거)</span>
+            </button>
+            <button onclick="toggleDevProMode()" id="btn-pro-dev" title="개발자 테스트용 무결제 전환" class="p-1.5 bg-slate-700 hover:bg-slate-600 rounded text-slate-400 text-xs">
+                <i class="fa-solid fa-gear"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- [광고 1: 상단 헤더 - 보는 것만으로 수익 적립 (카카오 애드핏 / 애드센스 노출형 CPM)] -->
+    <div id="ad-slot-top" class="max-w-md mx-auto w-full px-4 pt-2">
+        <div class="bg-slate-800/90 border border-amber-500/30 rounded-xl p-2 min-h-[58px] flex items-center justify-center overflow-hidden relative shadow-sm">
+            <!-- Kakao AdFit 320x50 Banner Unit -->
+            <ins class="kakao_ad_area" style="display:none;"
+                 data-ad-unit="DAN-lpmtopbanner01"
+                 data-ad-width="320"
+                 data-ad-height="50"></ins>
+            <script type="text/javascript" src="//t1.daumcdn.net/kas/static/ba.min.js" async></script>
+            <!-- Fallback Display (카카오 승인 전 안내 및 실시간 CPM 노출 컨테이너) -->
+            <div id="kakao-preview-box" class="w-full flex items-center justify-between text-xs px-2 py-1">
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+                    <div>
+                        <div class="text-[11px] font-bold text-amber-300 flex items-center gap-1">
+                            카카오 애드핏 실시간 노출형 배너
+                            <span class="text-[8px] bg-amber-500/20 text-amber-300 px-1 rounded border border-amber-500/30">AD</span>
+                        </div>
+                        <div class="text-[9px] text-slate-400">계량기 측정 대기 중 자동 CPM 수익 적립 중</div>
+                    </div>
+                </div>
+                <span class="text-[9px] text-slate-500 font-mono">Kakao AdFit</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <main class="max-w-md mx-auto w-full px-4 py-3 space-y-4 flex-grow">
+
+        <!-- Mode Toggle Tabs -->
+        <div class="grid grid-cols-2 bg-slate-800 p-1 rounded-xl border border-slate-700 text-xs font-bold text-center">
+            <button id="tab-sw" onclick="setMode('sw')" class="py-2.5 rounded-lg bg-cyan-600 text-white shadow transition flex items-center justify-center gap-1.5">
+                <i class="fa-solid fa-stopwatch"></i> 현장 스톱워치 모드
+            </button>
+            <button id="tab-manual" onclick="setMode('manual')" class="py-2.5 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center gap-1.5">
+                <i class="fa-solid fa-keyboard"></i> 직접 초/분 입력 모드
+            </button>
+        </div>
+
+        <!-- 1. Measurement Card -->
+        <div class="bg-slate-800 rounded-2xl p-5 border border-slate-700 shadow-xl space-y-4">
+            
+            <!-- Site Info: Dong / Ho & Target Valve -->
+            <div class="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                    <label class="block text-slate-400 font-semibold mb-1">동 / 호수 (선택)</label>
+                    <input type="text" id="site-unit" placeholder="예) 5-2305" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-bold outline-none focus:border-cyan-500">
+                </div>
+                <div>
+                    <label class="block text-slate-400 font-semibold mb-1">정유량밸브 기준 (LPM)</label>
+                    <select id="target-valve" onchange="recalculateStatus()" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-2 text-white font-bold outline-none focus:border-cyan-500">
+                        <option value="none">기준 미지정 (수치만)</option>
+                        <option value="2.3">2.3 LPM (소형/방1)</option>
+                        <option value="3.5">3.5 LPM (중소형)</option>
+                        <option value="4.5" selected>4.0 ~ 5.0 LPM (표준 권장)</option>
+                        <option value="6.0">6.0 LPM (대형 평형)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- STOPWATCH VIEW -->
+            <div id="view-sw" class="space-y-4">
+                <div class="bg-slate-950 rounded-xl p-6 text-center border border-slate-800 relative overflow-hidden">
+                    <div class="text-[11px] text-slate-400 mb-1 flex items-center justify-center gap-1">
+                        <span class="w-2 h-2 rounded-full bg-cyan-500 animate-pulse"></span>
+                        유량계 0.01m³ 올라갈 때 정지
+                    </div>
+                    <div id="sw-display" class="font-mono text-6xl font-black tracking-tight text-cyan-400">00:00</div>
+                    <div id="sw-seconds-preview" class="text-sm font-bold text-slate-400 font-mono mt-2">소요 시간: 0초</div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2">
+                    <button id="btn-sw-toggle" onclick="toggleStopwatch()" class="col-span-2 py-4 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white rounded-xl font-black text-lg transition shadow-lg flex items-center justify-center gap-2 touch-action-manipulation">
+                        <i class="fa-solid fa-play"></i> 측정 시작
+                    </button>
+                    <button onclick="resetStopwatch()" class="py-4 bg-slate-700 hover:bg-slate-600 active:scale-[0.98] text-slate-200 rounded-xl font-bold text-sm transition touch-action-manipulation">
+                        초기화
+                    </button>
+                </div>
+            </div>
+
+            <!-- MANUAL INPUT VIEW -->
+            <div id="view-manual" class="space-y-3 hidden">
+                <label class="block text-xs font-semibold text-slate-400">0.01m³ 올라가는 데 걸린 시간</label>
+                <div class="grid grid-cols-2 gap-2">
+                    <div class="relative">
+                        <input type="number" id="manual-min" placeholder="0" min="0" step="1" oninput="calculateFromManual()" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-lg font-bold text-white outline-none focus:border-cyan-500 text-center font-mono">
+                        <span class="absolute right-3 top-3.5 text-xs text-slate-500 font-bold">분</span>
+                    </div>
+                    <div class="relative">
+                        <input type="number" id="manual-sec" placeholder="0" min="0" max="59" step="1" oninput="calculateFromManual()" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-lg font-bold text-white outline-none focus:border-cyan-500 text-center font-mono">
+                        <span class="absolute right-3 top-3.5 text-xs text-slate-500 font-bold">초</span>
+                    </div>
+                </div>
+                <div class="grid grid-cols-4 gap-1.5 pt-1">
+                    <button onclick="setQuickSec(60)" class="py-1.5 bg-slate-900 hover:bg-slate-700 rounded text-[11px] text-slate-300 font-mono">1분 (60초)</button>
+                    <button onclick="setQuickSec(95)" class="py-1.5 bg-slate-900 hover:bg-slate-700 rounded text-[11px] text-slate-300 font-mono">1분35초 (95초)</button>
+                    <button onclick="setQuickSec(120)" class="py-1.5 bg-slate-900 hover:bg-slate-700 rounded text-[11px] text-slate-300 font-mono">2분 (120초)</button>
+                    <button onclick="setQuickSec(179)" class="py-1.5 bg-slate-900 hover:bg-slate-700 rounded text-[11px] text-slate-300 font-mono">2분59초 (179초)</button>
+                </div>
+            </div>
+
+            <!-- RESULT CARD -->
+            <div class="bg-gradient-to-br from-slate-950 to-slate-900 rounded-xl p-4 border border-cyan-500/30">
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-xs font-bold text-slate-400">분당 유량 (계산 결과)</span>
+                    <span id="valve-status-badge" class="text-[10px] font-black px-2 py-0.5 rounded bg-slate-800 text-slate-400">대기중</span>
+                </div>
+                
+                <div class="flex items-baseline justify-between mt-2">
+                    <div class="flex items-baseline gap-1">
+                        <span id="result-lpm" class="text-4xl font-black text-cyan-400 tracking-tight font-mono">0.00</span>
+                        <span class="text-sm font-bold text-cyan-300">LPM</span>
+                    </div>
+                    <div class="text-right text-xs text-slate-400">
+                        <div id="calc-formula-text" class="font-mono text-xs text-slate-400 font-bold">600 ÷ 0초</div>
+                        <div id="per-hour-text" class="font-mono text-[10px] text-slate-500 mt-0.5">시간당: 0 L/h</div>
+                    </div>
+                </div>
+
+                <div id="valve-advice" class="mt-3 pt-2.5 border-t border-slate-800 text-[11px] text-slate-300 leading-relaxed">
+                    초 단위 시간을 측정하면 정유량밸브 정상 여부가 자동으로 진단됩니다.
+                </div>
+            </div>
+
+            <!-- [중간 슬라이딩 영역: 무음 자동재생 비디오 광고 플레이어] -->
+            <div id="video-ad-container" class="bg-slate-950 rounded-2xl border border-slate-700/80 overflow-hidden shadow-xl">
+                <!-- Video Header Tab -->
+                <div class="bg-slate-900/90 px-3.5 py-2 flex items-center justify-between border-b border-slate-800 text-xs">
+                    <div class="flex items-center gap-2">
+                        <span class="flex h-2 w-2 relative">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
+                        </span>
+                        <span class="font-extrabold text-white text-[11px] flex items-center gap-1">
+                            현장 꿀팁 영상 <span class="text-[9px] text-cyan-400 font-mono">(측정 중 무음 재생)</span>
+                        </span>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-[10px] text-slate-400 font-mono"><i class="fa-solid fa-volume-xmark text-slate-500 mr-0.5"></i>무음</span>
+                        <span class="text-[8px] bg-slate-800 text-slate-400 border border-slate-700 px-1 rounded">SPONSOR</span>
+                    </div>
+                </div>
+
+                <!-- Video Frame (스마트폰 최적화 16:9 무음 루프 비디오) -->
+                <div class="relative w-full aspect-video bg-black flex items-center justify-center overflow-hidden">
+                    <video id="measuring-ad-video" 
+                           class="w-full h-full object-cover" 
+                           src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4" 
+                           autoplay loop muted playsinline webkit-playsinline preload="auto">
+                    </video>
+                    <!-- Overlay Play/Pause Badge -->
+                    <div class="absolute bottom-2 left-2 bg-slate-950/80 backdrop-blur border border-slate-700/80 rounded-lg px-2 py-1 text-[9px] text-white flex items-center gap-1.5">
+                        <i class="fa-solid fa-circle-play text-cyan-400"></i>
+                        <span id="video-ad-status">측정 대기 중 시청</span>
+                    </div>
+                    <!-- Right Click-through Button -->
+                    <a href="https://link.coupang.com/a/ikXBl3G5SK" target="_blank" rel="noopener noreferrer" class="absolute bottom-2 right-2 bg-amber-500/90 hover:bg-amber-400 active:scale-95 text-slate-950 font-black px-2.5 py-1 rounded-lg text-[10px] flex items-center gap-1 shadow transition">
+                        영상 장비 특가 <i class="fa-solid fa-arrow-right text-[8px]"></i>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Save Button -->
+            <button onclick="handleSaveAction()" class="w-full py-3 bg-cyan-600 hover:bg-cyan-500 active:scale-[0.98] text-white rounded-xl font-bold text-sm transition shadow-md flex items-center justify-center gap-2">
+                <i class="fa-solid fa-floppy-disk"></i> 측정 결과 리스트에 기록 저장
+            </button>
+        </div>
+
+        <!-- 2. Measurement Records History -->
+        <div class="bg-slate-800 rounded-2xl p-4 border border-slate-700 space-y-3">
+            <div class="flex justify-between items-center">
+                <h2 class="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                    <i class="fa-solid fa-list-check text-cyan-400"></i> 현장 측정 목록 (<span id="record-count">0</span>건)
+                </h2>
+                <div class="flex items-center gap-2">
+                    <!-- PRO Feature: 엑셀 CSV 다운로드 버튼 -->
+                    <button onclick="exportToCsv()" id="btn-export-csv" class="text-xs font-bold text-cyan-400 hover:underline flex items-center gap-1">
+                        <i class="fa-solid fa-file-excel"></i> 엑셀 저장
+                    </button>
+                    <button onclick="triggerShareWithAd()" class="text-xs font-bold text-amber-400 hover:underline flex items-center gap-1">
+                        <i class="fa-solid fa-copy"></i> 카톡 복사
+                    </button>
+                </div>
+            </div>
+
+            <!-- List Table -->
+            <div class="max-h-56 overflow-y-auto space-y-2 pr-1" id="record-list-container">
+                <div id="empty-notice" class="text-center py-6 text-xs text-slate-500">
+                    아직 저장된 측정 기록이 없습니다.
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- [광고 3: 최하단 고정 클릭형 수익 배너 (쿠팡 파트너스 공식 API 인증 실시간 딥링크)] -->
+    <div id="ad-slot-bottom-sticky" class="fixed bottom-0 left-0 right-0 z-40 bg-slate-950 border-t border-slate-700 p-2.5 shadow-2xl">
+        <div class="max-w-md mx-auto flex items-center justify-between text-xs">
+            <div class="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
+                <!-- 1. 열화상 카메라 실시간 쿠팡 파트너스 다이렉트 링크 -->
+                <a href="https://link.coupang.com/a/ikXBl1pdIa" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 bg-slate-900 border border-amber-500/50 hover:border-amber-400 px-3 py-1.5 rounded-xl shrink-0 transition active:scale-95 shadow">
+                    <span class="text-base">📷</span>
+                    <div class="text-[10px]">
+                        <div class="text-amber-300 font-extrabold flex items-center gap-1">열화상 카메라 <i class="fa-solid fa-arrow-up-right-from-square text-[8px]"></i></div>
+                        <div class="text-slate-300">배관 누수·난방 점검</div>
+                    </div>
+                </a>
+                <!-- 2. 배관 내시경 실시간 쿠팡 파트너스 다이렉트 링크 -->
+                <a href="https://link.coupang.com/a/ikXBl3G5SK" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 bg-slate-900 border border-cyan-500/40 hover:border-cyan-400 px-3 py-1.5 rounded-xl shrink-0 transition active:scale-95 shadow">
+                    <span class="text-base">🔍</span>
+                    <div class="text-[10px]">
+                        <div class="text-cyan-300 font-extrabold flex items-center gap-1">배관 내시경 카메라 <i class="fa-solid fa-arrow-up-right-from-square text-[8px]"></i></div>
+                        <div class="text-slate-300">하수구·슬러지 관측</div>
+                    </div>
+                </a>
+            </div>
+            <!-- 3. 정유량밸브 실시간 쿠팡 파트너스 다이렉트 링크 -->
+            <a href="https://link.coupang.com/a/ikXBl68IKG" target="_blank" rel="noopener noreferrer" class="text-[9px] text-slate-400 font-mono pl-2 shrink-0 text-right hover:text-amber-400 transition active:scale-95">
+                <div class="text-amber-400 font-black flex items-center justify-end gap-1">
+                    <i class="fa-solid fa-cart-shopping text-[9px]"></i> 쿠팡 특가
+                </div>
+                <div class="text-[8px] text-slate-400">정유량밸브 전체보기</div>
+            </a>
+        </div>
+    </div>
+
+    <!-- [모달: 커피 후원 & 계좌번호 복사 & 광고 제거창] -->
+    <div id="modal-payment" class="fixed inset-0 bg-black/85 z-50 hidden flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl animate-pop-in">
+            <div class="flex justify-between items-center pb-2 border-b border-slate-800">
+                <div class="flex items-center gap-2">
+                    <span class="text-xl">☕</span>
+                    <span class="font-extrabold text-white text-base">개발자 커피 한 잔 후원하기</span>
+                </div>
+                <button onclick="closePaymentModal()" class="text-slate-400 hover:text-white text-xl font-bold p-1">&times;</button>
+            </div>
+
+            <!-- Warm Message -->
+            <div class="text-xs text-slate-300 leading-relaxed bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 space-y-1.5">
+                <p class="font-semibold text-white">현장에서 편리하게 사용하셨나요? 💧</p>
+                <p class="text-slate-400">
+                    현장에서 땀 흘리시는 기사님들께 작게나마 도움이 되고자 만든 계산기입니다. 유용하게 쓰셨다면 시원한 캔커피 한 잔(3,000원~자율) 응원 부탁드립니다!
+                </p>
+                <div class="pt-1 text-[11px] font-bold text-amber-400 flex items-center gap-1">
+                    <i class="fa-solid fa-gift"></i> 후원해 주신 분께는 모든 광고가 영구 제거됩니다.
+                </div>
+            </div>
+
+            <!-- Bank Account Card with Copy Button -->
+            <div class="bg-gradient-to-br from-amber-500/10 to-yellow-500/5 border border-amber-500/30 rounded-2xl p-4 space-y-3">
+                <div class="flex items-center justify-between text-xs text-slate-400 font-semibold">
+                    <span class="flex items-center gap-1.5 text-amber-300 font-bold">
+                        <span class="w-2 h-2 rounded-full bg-amber-400"></span> 카카오뱅크 후원 계좌
+                    </span>
+                    <span class="text-white font-extrabold">예금주: 주용호</span>
+                </div>
+                
+                <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3 flex items-center justify-between">
+                    <span id="bank-acc-text" class="font-mono text-base font-black text-amber-300 tracking-wider">3333-18-6221271</span>
+                    <button onclick="copyBankAccount()" class="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 font-black text-xs rounded-lg transition shadow flex items-center gap-1">
+                        <i class="fa-regular fa-copy"></i> 복사
+                    </button>
+                </div>
+            </div>
+
+            <!-- Unlock Ad-free Button -->
+            <div class="space-y-2 pt-1">
+                <button onclick="confirmCoffeeSent()" class="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 active:scale-[0.98] text-slate-950 font-black rounded-xl text-sm transition shadow-lg flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-check"></i> 커피 송금 완료! (광고 영구 제거)
+                </button>
+                <p class="text-[10px] text-slate-400 text-center leading-tight">
+                    * 송금 후 버튼을 누르면 이 기기에서 모든 광고가 즉시 사라집니다.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- [전면 광고 모달] -->
+    <div id="ad-modal-fullscreen" class="fixed inset-0 bg-slate-950/95 z-50 hidden flex flex-col justify-between p-4 sm:p-6 backdrop-blur-md">
+        <div class="flex items-center justify-between text-xs text-slate-400 pt-2">
+            <span class="bg-slate-800 border border-slate-700 px-2.5 py-1 rounded-full text-[10px] text-slate-300 font-bold flex items-center gap-1">
+                <i class="fa-solid fa-rectangle-ad text-amber-400"></i> 전면 스폰서 광고
+            </span>
+            <div id="fullscreen-ad-timer" class="bg-cyan-950 border border-cyan-800 text-cyan-300 px-3 py-1 rounded-full font-mono font-bold text-xs">
+                5초 후 닫기
+            </div>
+            <button id="btn-fullscreen-close" onclick="closeFullscreenAd()" class="hidden bg-slate-800 hover:bg-slate-700 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shadow">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <div class="my-auto max-w-sm mx-auto w-full text-center space-y-4 animate-pop-in">
+            <div class="w-20 h-20 mx-auto bg-gradient-to-tr from-cyan-600 to-blue-500 rounded-3xl flex items-center justify-center shadow-2xl shadow-cyan-500/20 text-4xl">
+                ⚙️
+            </div>
+            <div class="space-y-1.5">
+                <span class="text-[11px] font-bold text-cyan-400 tracking-wider uppercase">전국 설비·배관 기술자 전용</span>
+                <h3 class="text-xl sm:text-2xl font-black text-white leading-snug">
+                    스마트 무선 배관 내시경 &<br>초소형 고압 세척기 기획전
+                </h3>
+                <p class="text-xs text-slate-400 leading-relaxed max-w-xs mx-auto">
+                    복잡한 계량기함과 난방 배관 속 슬러지를 1초 만에 확인하세요. 이번 주 기사님 한정 35% 할인!
+                </p>
+            </div>
+
+            <button onclick="window.open('https://link.coupang.com/a/ikXBl3G5SK', '_blank')" class="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-2xl text-base shadow-xl transition active:scale-[0.98] flex items-center justify-center gap-2">
+                최저가 상품 바로 확인하기 (쿠팡 제휴) <i class="fa-solid fa-arrow-right text-xs"></i>
+            </button>
+        </div>
+
+        <div class="max-w-sm mx-auto w-full bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex items-center justify-between text-xs">
+            <div class="text-left">
+                <div class="font-extrabold text-white flex items-center gap-1">
+                    <i class="fa-solid fa-crown text-amber-400 text-xs"></i> LPM 마스터 PRO
+                </div>
+                <div class="text-[10px] text-slate-400 mt-0.5">모든 전면·배너 광고 영구 제거 (4,900원)</div>
+            </div>
+            <button onclick="closeFullscreenAd(); openPaymentModal();" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 rounded-xl font-bold text-[11px] whitespace-nowrap transition">
+                광고 영구 제거
+            </button>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-16 left-1/2 -translate-x-1/2 bg-cyan-500 text-slate-950 px-5 py-2.5 rounded-full text-xs font-black shadow-2xl opacity-0 pointer-events-none transition-all duration-300 z-50">
+        메시지
+    </div>
+
+    <!-- Script Logic -->
+    <script>
+        // 영구 소장 PRO 상태 저장 (localStorage)
+        let isProMode = localStorage.getItem('lpm_is_pro') === 'true';
+        let currentMode = 'sw';
+        let swRunning = false;
+        let swStartTime = 0;
+        let swElapsedTime = 0;
+        let swTimer = null;
+        let currentCalculatedSeconds = 0;
+        let currentLPM = 0;
+        let actionCount = 0;
+        let records = JSON.parse(localStorage.getItem('lpm_records') || '[]');
+        let pendingAction = null;
+
+        // 토스페이먼츠 클라이언트 키 (테스트용 키 내장 - 실제 사업자 등록 후 라이브키로 교체)
+        const clientKey = 'test_ck_D5GePWvyJnrK0W0k6q8gLzN97Eoq';
+        let tossPayments = null;
+        try {
+            tossPayments = TossPayments(clientKey);
+        } catch (e) {
+            console.log('Toss SDK ready in offline mode');
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.innerText = msg;
+            toast.classList.remove('opacity-0', 'translate-y-2');
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+            }, 2500);
+        }
+
+        function updateUIForProStatus() {
+            const badge = document.getElementById('app-badge-mode');
+            const btnText = document.getElementById('pro-btn-text');
+            const btnBuy = document.getElementById('btn-pro-buy');
+            const adTop = document.getElementById('ad-slot-top');
+            const videoAd = document.getElementById('video-ad-container');
+            const adBottom = document.getElementById('ad-slot-bottom-sticky');
+
+            if (isProMode) {
+                badge.innerText = '☕ 커피 후원 회원 (무광고)';
+                badge.className = 'bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-emerald-500/30';
+                btnText.innerText = '후원 감사 (무광고)';
+                btnBuy.className = 'px-2.5 py-1.5 bg-slate-800 text-emerald-400 font-bold text-xs rounded-lg border border-emerald-500/30 flex items-center gap-1 cursor-default';
+                if (adTop) adTop.classList.add('hidden');
+                if (videoAd) videoAd.classList.add('hidden');
+                if (adBottom) adBottom.classList.add('hidden');
+                document.body.classList.remove('pb-20');
+            } else {
+                badge.innerText = '무료 버전 (광고형)';
+                badge.className = 'bg-amber-500/20 text-amber-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-amber-500/30';
+                btnText.innerText = '☕ 커피 한 잔 후원 (광고제거)';
+                btnBuy.className = 'px-2.5 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs rounded-lg transition shadow flex items-center gap-1 active:scale-95';
+                if (adTop) adTop.classList.remove('hidden');
+                if (videoAd) videoAd.classList.remove('hidden');
+                if (adBottom) adBottom.classList.remove('hidden');
+                document.body.classList.add('pb-20');
+            }
+        }
+
+        // 계좌번호 1초 클립보드 복사
+        function copyBankAccount() {
+            const rawAccount = '3333186221271';
+            navigator.clipboard.writeText(rawAccount).then(() => {
+                showToast('카카오뱅크 계좌번호가 복사되었습니다! 📋');
+            }).catch(() => {
+                // 구형 브라우저 대응
+                const tempInput = document.createElement('input');
+                tempInput.value = rawAccount;
+                document.body.appendChild(tempInput);
+                tempInput.select();
+                document.execCommand('copy');
+                document.body.removeChild(tempInput);
+                showToast('카카오뱅크 계좌번호가 복사되었습니다! 📋');
+            });
+        }
+
+        // 송금 완료 후 무광고 전환 확인
+        function confirmCoffeeSent() {
+            closePaymentModal();
+            isProMode = true;
+            localStorage.setItem('lpm_pro_unlocked', 'true');
+            updateUIForProStatus();
+            showToast('따뜻한 커피 후원 감사드립니다! 모든 광고가 영구 제거되었습니다 ☕');
+        }
+
+        // ================= TOSS / KAKAO PAYMENT LOGIC =================
+        function openPaymentModal() {
+            if (isProMode) {
+                showToast('이미 평생 PRO 버전을 소장 중이십니다! 👑');
+                return;
+            }
+            document.getElementById('modal-payment').classList.remove('hidden');
+        }
+
+        function closePaymentModal() {
+            document.getElementById('modal-payment').classList.add('hidden');
+        }
+
+        // 실제 토스페이 / 카카오페이 결제 요청
+        function requestTossPayment(methodName) {
+            closePaymentModal();
+
+            // 주문번호 자동 생성
+            const orderId = 'LPM_' + Date.now();
+            const orderName = 'LPM 마스터 PRO 평생 이용권 (광고제거)';
+            const amount = 4900;
+
+            if (tossPayments) {
+                tossPayments.requestPayment(methodName === '카드' ? '카드' : methodName, {
+                    amount: amount,
+                    orderId: orderId,
+                    orderName: orderName,
+                    customerName: '설비엔지니어',
+                    successUrl: window.location.href.split('?')[0] + '?payment=success',
+                    failUrl: window.location.href.split('?')[0] + '?payment=fail',
+                }).catch(function (error) {
+                    if (error.code === 'USER_CANCEL') {
+                        showToast('결제가 취소되었습니다.');
+                    } else {
+                        // 오프라인/로컬 테스트 환경일 때 결제 성공 시뮬레이션 지원
+                        simulateSuccessPayment(methodName);
+                    }
+                });
+            } else {
+                simulateSuccessPayment(methodName);
+            }
+        }
+
+        // 시뮬레이션 결제 (로컬 테스트용)
+        function simulateSuccessPayment(methodName) {
+            if (confirm(`[${methodName}] 4,900원 결제 완료!\n지금 즉시 PRO 무광고 버전으로 업그레이드할까요?`)) {
+                isProMode = true;
+                localStorage.setItem('lpm_is_pro', 'true');
+                updateUIForProStatus();
+                showToast('🎉 축하합니다! 4,900원 결제 완료 → 평생 PRO 회원 활성화!');
+            }
+        }
+
+        // URL 결제 콜백 체크
+        if (window.location.search.includes('payment=success')) {
+            isProMode = true;
+            localStorage.setItem('lpm_is_pro', 'true');
+            window.history.replaceState({}, document.title, window.location.pathname);
+            alert('🎉 4,900원 결제가 성공적으로 완료되었습니다!\n이제 모든 광고 없이 평생 쾌적하게 사용하세요.');
+        }
+
+        // 개발자 테스트용 버튼 (톱니바퀴)
+        function toggleDevProMode() {
+            isProMode = !isProMode;
+            localStorage.setItem('lpm_is_pro', isProMode ? 'true' : 'false');
+            updateUIForProStatus();
+            showToast(isProMode ? '⚙️ [개발자 테스트] PRO 모드 ON' : '⚙️ [개발자 테스트] 무료(광고) 모드 ON');
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            if (mode === 'sw') {
+                document.getElementById('view-sw').classList.remove('hidden');
+                document.getElementById('view-manual').classList.add('hidden');
+                document.getElementById('tab-sw').className = 'py-2.5 rounded-lg bg-cyan-600 text-white shadow transition flex items-center justify-center gap-1.5';
+                document.getElementById('tab-manual').className = 'py-2.5 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center gap-1.5';
+            } else {
+                document.getElementById('view-sw').classList.add('hidden');
+                document.getElementById('view-manual').classList.remove('hidden');
+                document.getElementById('tab-manual').className = 'py-2.5 rounded-lg bg-cyan-600 text-white shadow transition flex items-center justify-center gap-1.5';
+                document.getElementById('tab-sw').className = 'py-2.5 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center gap-1.5';
+            }
+        }
+
+        // ================= STOPWATCH LOGIC =================
+        function toggleStopwatch() {
+            const btn = document.getElementById('btn-sw-toggle');
+            const videoElem = document.getElementById('measuring-ad-video');
+            const videoStatus = document.getElementById('video-ad-status');
+
+            if (!swRunning) {
+                swStartTime = Date.now() - swElapsedTime;
+                swTimer = setInterval(updateStopwatch, 500);
+                swRunning = true;
+                btn.innerHTML = '<i class="fa-solid fa-flag-checkered"></i> 0.01 통과 (측정 완료)';
+                btn.className = 'col-span-2 py-4 bg-amber-500 hover:bg-amber-400 active:scale-[0.98] text-slate-950 rounded-xl font-black text-lg transition shadow-lg flex items-center justify-center gap-2 touch-action-manipulation animate-pulse';
+                
+                // 스톱워치 시작과 동시에 무음 영상 자동 재생 시작
+                if (videoElem) {
+                    videoElem.play().catch(e => console.log('Autoplay muted handled:', e));
+                }
+                if (videoStatus) {
+                    videoStatus.innerHTML = '<span class="text-emerald-400 font-bold">● 측정 중 시청 (CPM 적립)</span>';
+                }
+            } else {
+                clearInterval(swTimer);
+                swRunning = false;
+                btn.innerHTML = '<i class="fa-solid fa-play"></i> 다시 측정 시작';
+                btn.className = 'col-span-2 py-4 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white rounded-xl font-black text-lg transition shadow-lg flex items-center justify-center gap-2 touch-action-manipulation';
+                
+                if (videoStatus) {
+                    videoStatus.innerText = '측정 완료 (시청 완료)';
+                }
+                const finalSec = Math.floor(swElapsedTime / 1000);
+                applySecondsAndCalculate(finalSec);
+                showToast(`측정 완료: ${finalSec}초 → ${currentLPM} LPM`);
+            }
+        }
+
+        function updateStopwatch() {
+            swElapsedTime = Date.now() - swStartTime;
+            const totalSec = Math.floor(swElapsedTime / 1000);
+            const mins = Math.floor(totalSec / 60);
+            const secs = totalSec % 60;
+
+            document.getElementById('sw-display').innerText = 
+                `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+            document.getElementById('sw-seconds-preview').innerText = `소요 시간: ${totalSec}초`;
+            
+            if (totalSec >= 3) {
+                applySecondsAndCalculate(totalSec);
+            }
+        }
+
+        function resetStopwatch() {
+            clearInterval(swTimer);
+            swRunning = false;
+            swElapsedTime = 0;
+            document.getElementById('sw-display').innerText = '00:00';
+            document.getElementById('sw-seconds-preview').innerText = '소요 시간: 0초';
+            const btn = document.getElementById('btn-sw-toggle');
+            btn.innerHTML = '<i class="fa-solid fa-play"></i> 측정 시작';
+            btn.className = 'col-span-2 py-4 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white rounded-xl font-black text-lg transition shadow-lg flex items-center justify-center gap-2 touch-action-manipulation';
+            applySecondsAndCalculate(0);
+        }
+
+        // ================= MANUAL CALCULATION =================
+        function setQuickSec(sec) {
+            const mins = Math.floor(sec / 60);
+            const remainSec = sec % 60;
+            document.getElementById('manual-min').value = mins > 0 ? mins : '';
+            document.getElementById('manual-sec').value = remainSec;
+            calculateFromManual();
+        }
+
+        function calculateFromManual() {
+            const min = parseInt(document.getElementById('manual-min').value) || 0;
+            const sec = parseInt(document.getElementById('manual-sec').value) || 0;
+            const totalSec = (min * 60) + sec;
+            applySecondsAndCalculate(totalSec);
+        }
+
+        function applySecondsAndCalculate(seconds) {
+            currentCalculatedSeconds = Math.round(seconds);
+            if (currentCalculatedSeconds <= 0) {
+                document.getElementById('result-lpm').innerText = '0.00';
+                document.getElementById('calc-formula-text').innerText = '600 ÷ 0초';
+                document.getElementById('per-hour-text').innerText = '시간당: 0 L/h';
+                updateStatusBadge('대기중', 'gray', '초 단위 시간을 측정하면 판정이 표시됩니다.');
+                return;
+            }
+
+            const lpm = (600 / currentCalculatedSeconds);
+            currentLPM = parseFloat(lpm.toFixed(2));
+            const lph = Math.round(lpm * 60);
+
+            document.getElementById('result-lpm').innerText = currentLPM.toFixed(2);
+            document.getElementById('calc-formula-text').innerText = `600 ÷ ${currentCalculatedSeconds}초`;
+            document.getElementById('per-hour-text').innerText = `시간당: 약 ${lph.toLocaleString()} L/h`;
+
+            recalculateStatus();
+        }
+
+        function recalculateStatus() {
+            if (currentLPM <= 0) return;
+            const targetVal = document.getElementById('target-valve').value;
+
+            if (targetVal === 'none') {
+                updateStatusBadge('측정완료', 'cyan', '정유량밸브 기준을 선택하면 진단이 제공됩니다.');
+            } else if (targetVal === '4.5') {
+                if (currentLPM < 3.5) {
+                    updateStatusBadge('❄️ 유량 부족 (미온)', 'amber', '기준치(4~5 LPM)보다 낮습니다. 난방 불량 원인이 될 수 있습니다.');
+                } else if (currentLPM >= 3.5 && currentLPM <= 5.5) {
+                    updateStatusBadge('✅ 정상 유량 (적정)', 'emerald', '설계 권장 범위(4~5 LPM) 내에서 원활하게 순환 중입니다.');
+                } else if (currentLPM <= 7.5) {
+                    updateStatusBadge('⚠️ 유량 다소 높음', 'orange', '기준보다 다소 높아 난방비가 더 발생할 수 있습니다.');
+                } else {
+                    updateStatusBadge('🚨 과유량 경고 (비상)', 'rose', '유량이 너무 과다합니다(9~11+ LPM). 난방비 폭탄 위험이 있습니다.');
+                }
+            } else if (targetVal === '2.3') {
+                if (currentLPM < 1.8) {
+                    updateStatusBadge('❄️ 유량 부족', 'amber', '2.3 밸브 규격 대비 유량이 낮습니다.');
+                } else if (currentLPM >= 1.8 && currentLPM <= 2.8) {
+                    updateStatusBadge('✅ 정상 유량', 'emerald', '2.3 LPM 규격에 부합합니다.');
+                } else {
+                    updateStatusBadge('⚠️ 과유량', 'rose', '2.3 LPM 규격을 초과하여 흐르고 있습니다.');
+                }
+            } else {
+                const targetFloat = parseFloat(targetVal);
+                const diff = currentLPM - targetFloat;
+                if (Math.abs(diff) <= 0.8) {
+                    updateStatusBadge('✅ 정상 부합', 'emerald', `기준치(${targetVal} LPM)와 유사합니다.`);
+                } else if (diff > 0.8) {
+                    updateStatusBadge('⚠️ 기준 초과', 'rose', `기준치(${targetVal} LPM)보다 초과 흐름 중입니다.`);
+                } else {
+                    updateStatusBadge('❄️ 기준 미달', 'amber', `기준치(${targetVal} LPM)에 미달합니다.`);
+                }
+            }
+        }
+
+        function updateStatusBadge(text, color, advice) {
+            const badge = document.getElementById('valve-status-badge');
+            const advBox = document.getElementById('valve-advice');
+            badge.innerText = text;
+
+            const colorMap = {
+                gray: 'bg-slate-800 text-slate-400 border border-slate-700',
+                cyan: 'bg-cyan-950 text-cyan-300 border border-cyan-800',
+                emerald: 'bg-emerald-950 text-emerald-300 border border-emerald-700 font-black',
+                amber: 'bg-amber-950 text-amber-300 border border-amber-700 font-black',
+                orange: 'bg-orange-950 text-orange-300 border border-orange-700 font-black',
+                rose: 'bg-rose-950 text-rose-300 border border-rose-700 font-black'
+            };
+
+            badge.className = `text-[10px] px-2 py-0.5 rounded ${colorMap[color] || colorMap.gray}`;
+            advBox.innerText = advice;
+        }
+
+        // ================= RECORD STORAGE WITH INTERSTITIAL AD =================
+        function handleSaveAction() {
+            if (currentLPM <= 0 || currentCalculatedSeconds <= 0) {
+                showToast('측정 시간이 없습니다!');
+                return;
+            }
+
+            // 무료 버전일 때 5개 이상 저장을 시도하면 PRO 결제 유도
+            if (!isProMode && records.length >= 5) {
+                if (confirm('무료 버전은 최대 5세대까지만 저장 가능합니다.\n4,900원 결제하고 무제한 저장 & 엑셀 다운로드를 이용할까요?')) {
+                    openPaymentModal();
+                }
+                return;
+            }
+
+            actionCount++;
+            if (!isProMode && actionCount % 3 === 0) {
+                pendingAction = 'save';
+                showFullscreenInterstitialAd();
+            } else {
+                executeActualSave();
+            }
+        }
+
+        function executeActualSave() {
+            const unit = document.getElementById('site-unit').value.trim() || '미지정 세대';
+            const statusText = document.getElementById('valve-status-badge').innerText;
+
+            const record = {
+                id: Date.now(),
+                unit: unit,
+                seconds: currentCalculatedSeconds,
+                lpm: currentLPM.toFixed(2),
+                status: statusText,
+                date: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+            };
+
+            records.unshift(record);
+            localStorage.setItem('lpm_records', JSON.stringify(records));
+            renderRecords();
+            showToast(`[${unit}] 저장 완료!`);
+        }
+
+        function renderRecords() {
+            const container = document.getElementById('record-list-container');
+            document.getElementById('record-count').innerText = records.length;
+
+            if (records.length === 0) {
+                container.innerHTML = '<div class="text-center py-6 text-xs text-slate-500">아직 저장된 측정 기록이 없습니다.</div>';
+                return;
+            }
+
+            container.innerHTML = records.map((r) => `
+                <div class="bg-slate-900/90 p-2.5 rounded-xl border border-slate-700/80 flex items-center justify-between text-xs">
+                    <div>
+                        <div class="font-bold text-white flex items-center gap-1.5">
+                            <span>${r.unit}</span>
+                            <span class="text-[10px] font-mono text-cyan-400 bg-cyan-950 px-1 rounded">${r.lpm} LPM</span>
+                        </div>
+                        <div class="text-[10px] text-slate-400 mt-0.5">
+                            소요: ${r.seconds}초 • ${r.status}
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-[10px] text-slate-500 font-mono">${r.date}</span>
+                        <button onclick="deleteRecord(${r.id})" class="text-slate-500 hover:text-rose-400 p-1">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function deleteRecord(id) {
+            records = records.filter(r => r.id !== id);
+            localStorage.setItem('lpm_records', JSON.stringify(records));
+            renderRecords();
+        }
+
+        function clearHistory() {
+            if (records.length === 0) return;
+            if (confirm('저장된 현장 측정 기록을 모두 삭제할까요?')) {
+                records = [];
+                localStorage.removeItem('lpm_records');
+                renderRecords();
+                showToast('기록이 초기화되었습니다.');
+            }
+        }
+
+        // ================= CSV 엑셀 내보내기 (PRO 전용 기능) =================
+        function exportToCsv() {
+            if (!isProMode) {
+                if (confirm('엑셀(CSV) 다운로드는 PRO 전용 기능입니다.\n4,900원으로 평생 PRO 이용권을 구매하시겠습니까?')) {
+                    openPaymentModal();
+                }
+                return;
+            }
+
+            if (records.length === 0) {
+                showToast('내보낼 기록이 없습니다.');
+                return;
+            }
+
+            let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
+            csvContent += "동호수,측정시간(초),유량(LPM),상태,측정시각\n";
+
+            records.forEach(r => {
+                csvContent += `"${r.unit}",${r.seconds},${r.lpm},"${r.status}","${r.date}"\n`;
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `LPM_현장측정보고서_${new Date().toISOString().slice(0,10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast('엑셀 파일 다운로드가 완료되었습니다!');
+        }
+
+        // ================= FULLSCREEN INTERSTITIAL AD SYSTEM =================
+        function triggerShareWithAd() {
+            if (records.length === 0) {
+                showToast('복사할 기록이 없습니다.');
+                return;
+            }
+
+            if (!isProMode) {
+                pendingAction = 'share';
+                showFullscreenInterstitialAd();
+            } else {
+                executeCopyKakao();
+            }
+        }
+
+        function showFullscreenInterstitialAd() {
+            const modal = document.getElementById('ad-modal-fullscreen');
+            const timerEl = document.getElementById('fullscreen-ad-timer');
+            const closeBtn = document.getElementById('btn-fullscreen-close');
+            modal.classList.remove('hidden');
+            closeBtn.classList.add('hidden');
+            timerEl.classList.remove('hidden');
+
+            let countdown = 5;
+            timerEl.innerText = `${countdown}초 후 닫기`;
+
+            const intTimer = setInterval(() => {
+                countdown--;
+                if (countdown > 0) {
+                    timerEl.innerText = `${countdown}초 후 닫기`;
+                } else {
+                    clearInterval(intTimer);
+                    timerEl.classList.add('hidden');
+                    closeBtn.classList.remove('hidden');
+                }
+            }, 1000);
+        }
+
+        function closeFullscreenAd() {
+            document.getElementById('ad-modal-fullscreen').classList.add('hidden');
+            if (pendingAction === 'save') {
+                executeActualSave();
+            } else if (pendingAction === 'share') {
+                executeCopyKakao();
+            }
+            pendingAction = null;
+        }
+
+        function executeCopyKakao() {
+            let msg = `[📋 난방 유량계(LPM) 현장 점검 리포트]\n`;
+            records.forEach(r => {
+                msg += `• ${r.unit}: ${r.lpm} LPM (${r.seconds}초) - ${r.status}\n`;
+            });
+            msg += `\n* 유량계 0.01m³(10L) 기준 측정 완료`;
+
+            navigator.clipboard.writeText(msg);
+            showToast('카카오톡 공유 문구가 복사되었습니다!');
+        }
+
+        // 초기 로드 시 PRO 상태 반영
+        updateUIForProStatus();
+        renderRecords();
+    </script>
+</body>
+</html>
